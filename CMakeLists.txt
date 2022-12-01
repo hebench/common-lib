@@ -29,33 +29,33 @@ else()
 endif()
 
 set(${PROJECT_NAME}_HEADERS
-    modules/general/include/pool.h
-    modules/general/include/nocopy.h
-    modules/general/include/error.h
-    modules/general/include/memory_buffer.h
-    modules/general/include/api_decl.h
-    modules/general/include/hebench_utilities.h
-    modules/general/include/hebench_math_utils.h
-    modules/args_parser/include/args_parser.h
-    modules/config_reader/include/config_reader.h
-    modules/logging/include/logging.h
-    modules/threading/include/threading.h
-    modules/threading/include/safe_queue.h
-    modules/timer/include/timer.h
+    hebench/modules/general/include/pool.h
+    hebench/modules/general/include/nocopy.h
+    hebench/modules/general/include/error.h
+    hebench/modules/general/include/memory_buffer.h
+    hebench/modules/general/include/api_decl.h
+    hebench/modules/general/include/hebench_utilities.h
+    hebench/modules/general/include/hebench_math_utils.h
+    hebench/modules/args_parser/include/args_parser.h
+    hebench/modules/config_reader/include/config_reader.h
+    hebench/modules/logging/include/logging.h
+    hebench/modules/threading/include/threading.h
+    hebench/modules/threading/include/safe_queue.h
+    hebench/modules/timer/include/timer.h
     )
 
 list(APPEND ${PROJECT_NAME}_HEADERS
-    modules/threading/include/inl/safe_queue.inl
+    hebench/modules/threading/include/inl/safe_queue.inl
     )
 
 set(${PROJECT_NAME}_SOURCES
-    modules/args_parser/src/args_parser.cpp
-    modules/config_reader/src/config_reader.cpp
-    modules/threading/src/threading.cpp
-    modules/general/src/hebench_utilities.cpp
-    modules/general/src/hebench_math_utils.cpp
-    modules/general/src/memory_buffer.cpp
-    modules/logging/src/logging.cpp
+    hebench/modules/args_parser/src/args_parser.cpp
+    hebench/modules/config_reader/src/config_reader.cpp
+    hebench/modules/threading/src/threading.cpp
+    hebench/modules/general/src/hebench_utilities.cpp
+    hebench/modules/general/src/hebench_math_utils.cpp
+    hebench/modules/general/src/memory_buffer.cpp
+    hebench/modules/logging/src/logging.cpp
     )
 
 # create the target library
@@ -85,6 +85,6 @@ target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -fPIC)
 install(TARGETS ${PROJECT_NAME} DESTINATION lib)
 foreach(HEADER IN LISTS ${PROJECT_NAME}_HEADERS)
     get_filename_component(HEADER_PATH ${HEADER} DIRECTORY)
-    install(FILES ${HEADER} DESTINATION include/hebench/${HEADER_PATH})
+    install(FILES ${HEADER} DESTINATION include/${HEADER_PATH})
 endforeach()
 
