@@ -10,9 +10,25 @@
 cmake_minimum_required(VERSION 3.12)
 
 project(hebench_common-lib VERSION 0.1.5 LANGUAGES C CXX)
-set(ACTIVE_TARGET ${PROJECT_NAME})
 
-set(HEADERS
+if(CMAKE_BUILD_TYPE)
+  set(RELEASE_TYPES
+      Debug
+      Release
+      RelWithDebInfo
+      MinSizeRel)
+  list(FIND RELEASE_TYPES ${CMAKE_BUILD_TYPE} INDEX_FOUND)
+  if(${INDEX_FOUND} EQUAL -1)
+    message(
+      FATAL_ERROR
+        "CMAKE_BUILD_TYPE must be one of Debug, Release, RelWithDebInfo, or MinSizeRel"
+      )
+  endif()
+else()
+  set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of Build" FORCE)
+endif()
+
+set(${PROJECT_NAME}_HEADERS
     modules/general/include/pool.h
     modules/general/include/nocopy.h
     modules/general/include/error.h
@@ -28,11 +44,11 @@ set(HEADERS
     modules/timer/include/timer.h
     )
 
-list(APPEND HEADERS
+list(APPEND ${PROJECT_NAME}_HEADERS
     modules/threading/include/inl/safe_queue.inl
     )
 
-set(SOURCES
+set(${PROJECT_NAME}_SOURCES
     modules/args_parser/src/args_parser.cpp
     modules/config_reader/src/config_reader.cpp
     modules/threading/src/threading.cpp
@@ -44,17 +60,17 @@ set(SOURCES
 
 # create the target library
 add_library(
-    ${ACTIVE_TARGET} STATIC
+    ${PROJECT_NAME} STATIC
     # files
-    ${HEADERS}
-    ${SOURCES}
+    ${${PROJECT_NAME}_HEADERS}
+    ${${PROJECT_NAME}_SOURCES}
     )
 
 # add the include path to this library
-target_include_directories(${ACTIVE_TARGET} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${PROJECT_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # set compiler properties
-set_target_properties(${ACTIVE_TARGET} PROPERTIES
+set_target_properties(${PROJECT_NAME} PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
@@ -63,5 +79,12 @@ set_target_properties(${ACTIVE_TARGET} PROPERTIES
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-target_link_libraries(${ACTIVE_TARGET} Threads::Threads)
-target_compile_options(${ACTIVE_TARGET} PRIVATE -Wall -Wextra -fPIC)
+target_link_libraries(${PROJECT_NAME} Threads::Threads)
+target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -fPIC)
+
+install(TARGETS ${PROJECT_NAME} DESTINATION lib)
+foreach(HEADER IN LISTS ${PROJECT_NAME}_HEADERS)
+    get_filename_component(HEADER_PATH ${HEADER} DIRECTORY)
+    install(FILES ${HEADER} DESTINATION include/hebench/${HEADER_PATH})
+endforeach()
+
