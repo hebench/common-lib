@@ -130,9 +130,10 @@ void ArgsParser::parse(int argc, const char *const argv[], int start_index)
         // get program name if available
         if (argc > 0 && start_index > 0)
             m_program_name = std::filesystem::path(argv[0]).filename();
-        else
-            m_program_name = DefaultProgramName;
     } // end if
+
+    if (m_program_name.empty())
+        m_program_name = DefaultProgramName;
 
     int i = start_index;
     while (i < argc)
