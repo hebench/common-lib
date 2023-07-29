@@ -4,26 +4,87 @@
 #include "../include/args_parser.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <limits>
+#include <string_view>
 
 using namespace hebench;
 
-ArgsParser::ArgsParser(bool bshow_help, const std::string &help_text, bool buse_exit) :
-    m_buse_exit(buse_exit), m_help_id(std::numeric_limits<std::size_t>::max()), m_help_text(help_text)
+namespace args_parser {
+constexpr const char *BlankTrim = " \t\n\r\f\v";
+
+std::vector<std::string_view> tokenize(std::string_view s, const std::string_view &delim)
 {
+    std::vector<std::string_view> retval;
+
+    while (!s.empty())
+    {
+        auto pos = s.find(delim);
+        if (pos == std::string_view::npos)
+            pos = s.size();
+        retval.emplace_back(s.substr(0, pos));
+        s.remove_prefix(pos);
+        if (!s.empty())
+            s.remove_prefix(delim.size());
+    }
+
+    return retval;
+}
+} // namespace args_parser
+
+ArgsParser::ArgsParser(bool bshow_help,
+                       const std::string &description,
+                       bool buse_exit,
+                       std::size_t margin_size,
+                       std::size_t line_size) :
+    ArgsParser(bshow_help, description, std::string(), std::string(), buse_exit, margin_size, line_size)
+{
+}
+
+ArgsParser::ArgsParser(bool bshow_help,
+                       const std::string &description,
+                       const std::string &epilogue,
+                       bool buse_exit,
+                       std::size_t margin_size,
+                       std::size_t line_size) :
+    ArgsParser(bshow_help, description, epilogue, std::string(), buse_exit, margin_size, line_size)
+{
+}
+
+ArgsParser::ArgsParser(bool bshow_help,
+                       const std::string &description,
+                       const std::string &epilogue,
+                       const std::string &program_name,
+                       bool buse_exit,
+                       std::size_t margin_size,
+                       std::size_t line_size) :
+    m_buse_exit(buse_exit),
+    m_margin_size(margin_size),
+    m_line_size(line_size),
+    m_help_id(std::numeric_limits<std::size_t>::max()),
+    m_program_name(program_name),
+    m_description(description),
+    m_epilogue(epilogue)
+{
+    if (!m_description.empty())
+        m_description = ArgsParser::fixHelpText(m_description, 0, m_line_size);
+    if (!m_epilogue.empty())
+        m_epilogue = ArgsParser::fixHelpText(m_epilogue, 0, m_line_size);
+
     if (bshow_help)
     {
-        addArgument({ "-h", "/h", "\\h", "--help", "/help", "\\help" }, 0, std::string(), "    Shows this help.");
+        std::string help_text = (m_margin_size <= 0 ? std::string(4, ' ') : std::string()) + "Shows this help.";
+        addArgument({ "-h", "/h", "\\h", "--help", "/help", "\\help" }, 0,
+                    std::string(), help_text);
         m_help_id = findArgID("-h");
     }
 }
 
 std::size_t ArgsParser::addPositionalArgument(const std::string &arg_name, const std::string &help_text)
 {
-    m_positional_args.emplace_back(arg_name, help_text);
-    m_positional_values.resize(m_positional_args.size());
-    return m_positional_values.size() - 1;
+    m_positional_args.emplace_back(arg_name, fixHelpText(help_text));
+    return m_positional_args.size() - 1;
 }
 
 void ArgsParser::addArgument(const std::string &arg, std::size_t n, const std::string &params_help, const std::string &help_text)
@@ -55,50 +116,33 @@ void ArgsParser::addArgument(const std::vector<std::string> &args, std::size_t n
     add(args, n, params_help, help_text);
 }
 
-void ArgsParser::parse(int argc, char *const argv[], int start_index)
+void ArgsParser::parse(int argc, const char *const argv[], int start_index)
 {
     if (start_index < 0)
         start_index = 0;
-    // get program name if available
-    if (start_index > 0)
-    {
-        m_program_name              = argv[0];
-        std::size_t separator_index = m_program_name.find_last_of('/');
-        if (separator_index == std::string::npos)
-            separator_index = m_program_name.find_last_of('\\');
-        if (separator_index != std::string::npos)
-            m_program_name = m_program_name.substr(separator_index + 1);
-    }
+    if (argc < 0)
+        argc = 0;
     if (argc < start_index)
         throw std::invalid_argument("Not enough arguments.");
-    if (static_cast<std::size_t>(argc - start_index) < count_positional())
-        throw InvalidArgument("Insufficient positional parameters.");
 
-    std::size_t positional_arg_i = 0;
-    int i                        = start_index;
+    if (m_program_name.empty())
+    {
+        // get program name if available
+        if (argc > 0 && start_index > 0)
+            m_program_name = std::filesystem::path(argv[0]).filename();
+        else
+            m_program_name = DefaultProgramName;
+    } // end if
+
+    int i = start_index;
     while (i < argc)
     {
         std::string sarg = argv[i];
-
-        if (positional_arg_i < count_positional())
+        try
         {
-            try
-            {
-                // check if argument is help
-                args_unique_id id = findArgID(sarg);
-                if (checkShowHelp(id))
-                    i = argc;
-            }
-            catch (InvalidArgument &)
-            {
-                // parse positional argument
-                m_positional_values[positional_arg_i++] = sarg;
-                ++i;
-            }
-        } // end if
-        else
-        {
+            // retrieve option argument (will throw if it is not)
             args_unique_id id = findArgID(sarg);
+            // check if argument is help
             if (checkShowHelp(id))
             {
                 i = argc;
@@ -118,9 +162,18 @@ void ArgsParser::parse(int argc, char *const argv[], int start_index)
                         values[j] = argv[i + j + 1];
                     i += static_cast<int>(values.size());
                 } // end if
-                ++i;
             } // end else
-        } // end else
+        }
+        catch (InvalidArgument &)
+        {
+            if (m_positional_values.size() >= m_positional_args.size())
+                // all positional arguments have been parsed,
+                // and this is not a known option argument
+                throw;
+            // parse positional argument
+            m_positional_values.emplace_back(std::move(sarg));
+        }
+        ++i;
     } // end while
 }
 
@@ -173,7 +226,7 @@ void ArgsParser::add(const std::vector<std::string> &args, std::size_t n, const 
     }
     arr_help_text.emplace_back();
     arr_help_text.emplace_back(params_help);
-    arr_help_text.emplace_back(help_text);
+    arr_help_text.emplace_back(fixHelpText(help_text));
     m_map_help[help_text_id] = arr_help_text;
 
     m_map_values[id] = std::vector<std::string>(n);
@@ -186,6 +239,73 @@ ArgsParser::args_unique_id ArgsParser::findArgID(const std::string &arg) const
     return m_map_args.at(arg);
 }
 
+std::string ArgsParser::fixHelpText(const std::string &original) const
+{
+    return ArgsParser::fixHelpText(original, this->m_margin_size, this->m_line_size);
+}
+
+std::string ArgsParser::fixHelpText(const std::string &original,
+                                    std::size_t margin_size,
+                                    std::size_t line_size)
+{
+    // rearrange help text for an argument to fit the specified margin and line size
+    std::stringstream retval;
+
+    // split original text into its original lines
+    std::vector<std::string_view> tokens =
+        args_parser::tokenize(std::string_view(original.c_str(), original.size()), "\n");
+
+    std::size_t actual_line_size = line_size > 0 ? line_size - margin_size : 0;
+    for (std::size_t i = 0; i < tokens.size(); ++i)
+    {
+        // process each original line
+
+        // split original line into multiple lines respecting specified
+        // margin and line legth
+        std::string_view token = tokens[i];
+        std::vector<std::string_view> lines;
+        if (i > 0)
+            // next line
+            retval << std::endl;
+        bool b_first_line = true;
+        while (!token.empty())
+        {
+            std::string_view line;
+            // absolute cut of the line
+            if (actual_line_size <= 0 || token.size() <= actual_line_size)
+                line = token;
+            else
+            {
+                line = token.substr(0, actual_line_size);
+                // find first blank in the line
+                auto blank_pos = line.find_last_of(args_parser::BlankTrim);
+                if (blank_pos == std::string_view::npos)
+                    // no blanks found in absolute line cut, so, split at the first blank
+                    // in remaining original line
+                    line = token.substr(0, token.find_first_of(args_parser::BlankTrim));
+                else
+                    line = line.substr(0, blank_pos);
+            } // end else
+
+            // line is now blank cut
+
+            // remove the blank cut line from original
+            token.remove_prefix(line.size());
+            if (token.find_first_of(args_parser::BlankTrim) == 0)
+                token.remove_prefix(1);
+
+            // output the blank cut line
+            if (b_first_line)
+                b_first_line = false;
+            else
+                retval << std::endl;
+            retval << std::string(margin_size, ' ') << line;
+        } // end while
+    } // end for
+
+    return retval.str();
+}
+
 void ArgsParser::printUsage() const
 {
     printUsage(std::cout);
@@ -193,16 +313,23 @@ void ArgsParser::printUsage() const
 
 void ArgsParser::printUsage(std::ostream &os) const
 {
-    os << "Usage:" << std::endl
-       << "    ";
-    m_program_name.empty() ? os << "program" : os << m_program_name;
-    if (count_positional() > 0)
-    {
-        for (std::size_t i = 0; i < count_positional(); ++i)
-            os << " " << m_positional_args[i].first;
-    } // end if
+    os << "Usage:" << std::endl;
+    if (m_margin_size <= 0)
+        os << "    ";
+    else
+        os << std::string(m_margin_size, ' ');
+    os << m_program_name;
     if (!m_map_help.empty())
         os << " OPTIONS";
+    if (m_positional_args.size() > 0)
+    {
+        std::string s_margin(m_program_name.size() + 1
+                                 + (m_margin_size <= 0 ? 4 : m_margin_size),
+                             ' ');
+        for (std::size_t i = 0; i < m_positional_args.size(); ++i)
+            os << " \\" << std::endl
+               << s_margin << m_positional_args[i].first;
+    } // end if
     os << std::endl;
 }
 
@@ -228,15 +355,15 @@ void ArgsParser::showHelp() const
 void ArgsParser::showHelp(std::ostream &os) const
 {
     // build and display the help text
-    if (!m_help_text.empty())
-        os << m_help_text << std::endl
+    if (!m_description.empty())
+        os << m_description << std::endl
            << std::endl;
     printUsage(os);
-    if (count_positional() > 0)
+    if (m_positional_args.size() > 0)
     {
         os << std::endl
-           << "POSITIONAL ARGUMENTS: " << count_positional() << std::endl;
-        for (std::size_t i = 0; i < count_positional(); ++i)
+           << "POSITIONAL ARGUMENTS: " << m_positional_args.size() << std::endl;
+        for (std::size_t i = 0; i < m_positional_args.size(); ++i)
         {
             os << m_positional_args[i].first << std::endl
                << m_positional_args[i].second << std::endl
@@ -281,6 +408,11 @@ void ArgsParser::showHelp(std::ostream &os) const
             } // end if
         } // end for
     } // end if
+
+    if (!m_epilogue.empty())
+        os << std::endl
+           << m_epilogue
+           << std::endl;
 
     if (m_buse_exit)
         std::exit(0);

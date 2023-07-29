@@ -42,6 +42,7 @@ namespace hebench {
 class ArgsParser
 {
 public:
+    static constexpr const char *DefaultProgramName = "program";
     /**
      * @brief Instances of this class are thrown when help is requested.
      * @details This class derives from std::logic_error.
@@ -89,17 +90,46 @@ public:
      * @brief Constructs a new argument parser object.
      * @param bshow_help[in] If true, this object will automatically display
      * help manual to the standard output when the help flag is detected.
-     * @param help_text[in] Help text to display before displaying the rest of
-     * the help.
+     * @param description[in] Help text describing the program, to display
+     * before displaying the rest of the help. Empty string if none.
+     * @param epilogue[in] Help text to display after before displaying the
+     * command line arguments. Empty string if none.
+     * @param program_name[in] Name of the program. If empty string, this object
+     * will attempt to deduce the program name from `argv[0]` when parsing the
+     * arguments.
      * @param buse_exit[in] If true, std::exit(0) will be called when help is
      * requested, otherwise, exception HelpShown is thrown.
+     * @param margin_size[in] Size, in characters, for the left margin when
+     * displaying argument description in the help. If `0`, no margin is added.
+     * @param line_size[in] Size, in characters, for a complete line of text when
+     * displaying text in the help. Lines will be wrapped, breaking on whitspaces,
+     * to attempt to match this size. If `0`, disables word wrapping.
      * @details If \p bshow_help is true, help request is detected during the
-     * call to parse(). The help flags that are checked for automatically are:
-     * -h, /h, \\h, --help, /help, \help. If clients do not wish these flags to
+     * call to parse(). The help flags that are automatically checked are:
+     * -h, /h, \\h, --help, /help, \\help. If clients do not wish these flags to
      * be taken by the parser, make sure to set \p bshow_help to false, in which
      * case, clients will need to provide their own help message system.
      */
-    ArgsParser(bool bshow_help = true, const std::string &help_text = std::string(), bool buse_exit = false);
+    ArgsParser(bool bshow_help,
+               const std::string &description,
+               const std::string &epilogue,
+               const std::string &program_name,
+               bool buse_exit          = false,
+               std::size_t margin_size = 0,
+               std::size_t line_size   = 0);
+
+    ArgsParser(bool bshow_help                = false,
+               const std::string &description = std::string(),
+               bool buse_exit                 = false,
+               std::size_t margin_size        = 0,
+               std::size_t line_size          = 0);
+
+    ArgsParser(bool bshow_help,
+               const std::string &description,
+               const std::string &epilogue,
+               bool buse_exit          = false,
+               std::size_t margin_size = 0,
+               std::size_t line_size   = 0);
 
     void printUsage() const;
     void printUsage(std::ostream &os) const;
@@ -109,15 +139,32 @@ public:
      * @param arg_name[in] Name of the positional argument.
      * @param help_text[in] Help text to be displayed for this argument.
      * @return The index for the positional argument in the list of positional arguments.
-     * @details All positional arguments are required in the list of command line
-     * arguments. Positional arguments must appear in order before any option arguments.
-     * Failure to provide one of the positional arguments causes InvalidArgument
-     * exception to be thrown during parsing.
+     * @details Positional arguments must appear in order. Any argument not matching an
+     * option argument will be considered a positional argument and will be set as the
+     * value for the corresponding positional argument.
+     *
+     * For example, if a parser has an option argument '-c', and 2 positional argument,
+     * the following list of arguments is interpreted as such:
+     * @code
+     * ./program input_file.txt -c output_file.txt
+     * @endcode
+     * Positional arguments: 0: input_file.txt, 1: output_file.txt
+     * Option arguments: -c
+     *
+     * Clients can query how many positional arguments were parsed using method
+     * `count_positional()` and retrieve their value by index using
+     * `getPositionalValue()` method.
+     *
+     * Positional arguments are not mandatory and are not enforced during parsing.
+     * If clients detect that the number of positional values parsed is not sufficient,
+     * clients can supply their own default values, or raise their own errors if missing
+     * positional arguments were expected.
      *
      * Parameters to this method are purely for display purposes when showing the help text.
      * The new positional argument is referenced by its index, as returned by this method.
      */
-    std::size_t addPositionalArgument(const std::string &arg_name, const std::string &help_text = std::string());
+    std::size_t addPositionalArgument(const std::string &arg_name,
+                                      const std::string &help_text = std::string());
 
     /**
      * @brief Adds an argument to this parser's list of parsable arguments.
@@ -217,7 +264,7 @@ public:
      * @throws ArgsParser::HelpShown if buse_help and buse_exit were set during
      * construction, and a help flag was parsed in the list of arguments.
      */
-    void parse(int argc, char *const argv[], int start_index = 1);
+    void parse(int argc, const char *const argv[], int start_index = 1);
 
     /**
      * @brief Retrieves a vector of strings representing the values passed as
@@ -506,25 +553,32 @@ public:
      */
     std::size_t empty() const { return m_set_args.empty(); }
     /**
-     * @brief Retrieves the number of positional arguments required by this
-     * parser.
+     * @brief Retrieves the number of positional arguments parsed by last call to parse().
      */
     std::size_t count_positional() const { return m_positional_values.size(); }
 
 private:
     typedef std::size_t args_unique_id;
 
+    static std::string fixHelpText(const std::string &original,
+                                   std::size_t margin_size,
+                                   std::size_t line_size);
+
     void add(const std::vector<std::string> &args, std::size_t n, const std::string &params_help, const std::string &help_text);
     args_unique_id findArgID(const std::string &arg) const;
+    std::string fixHelpText(const std::string &original) const;
     bool checkShowHelp(args_unique_id id);
     void showHelp() const;
     void showHelp(std::ostream &os) const;
     bool hasArgument(args_unique_id id) const;
 
     bool m_buse_exit;
+    std::size_t m_margin_size; // number of spaces at left margin
+    std::size_t m_line_size; // number of characters in a line (set to 0 to avoid breaking line).
     args_unique_id m_help_id;
     std::string m_program_name;
-    std::string m_help_text;
+    std::string m_description;
+    std::string m_epilogue;
     std::unordered_map<std::string, args_unique_id> m_map_args; // maps args to unique id (all arguments parsable by this
     // parser)
     std::unordered_map<args_unique_id, std::vector<std::string>> m_map_values; // maps id to value
