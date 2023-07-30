@@ -72,6 +72,9 @@ ArgsParser::ArgsParser(bool bshow_help,
     if (!m_epilogue.empty())
         m_epilogue = ArgsParser::fixHelpText(m_epilogue, 0, m_line_size);
 
+    if (margin_size >= line_size)
+        throw std::invalid_argument("`margin_size` must be less than `line_size`.");
+
     if (bshow_help)
     {
         std::string help_text = (m_margin_size <= 0 ? std::string(4, ' ') : std::string()) + "Shows this help.";
@@ -123,7 +126,7 @@ void ArgsParser::parse(int argc, const char *const argv[], int start_index)
     if (argc < 0)
         argc = 0;
     if (argc < start_index)
-        throw std::invalid_argument("Not enough arguments.");
+        throw std::invalid_argument("Not enough arguments to parse.");
 
     if (m_program_name.empty())
     {
